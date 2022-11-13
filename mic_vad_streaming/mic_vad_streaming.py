@@ -8,6 +8,7 @@ import wave
 import webrtcvad
 from halo import Halo
 from scipy import signal
+from . import translator as tr
 
 logging.basicConfig(level=20)
 
@@ -151,11 +152,14 @@ class VADAudio(Audio):
                     yield None
                     ring_buffer.clear()
 
+def printraw(*text):
+    rawout = open(1, 'w', encoding='utf8', closefd=False)
+    print(*text, file=rawout)
+    rawout.flush(); rawout.close()
+
 def main(ARGS):
 
-    translate_fpath = \
-        os.path.join(os.getcwd(), "..", "snippet.txt")
-    text_ = ""
+    translator = tr.load_translator('ta', 'en')
 
     # Load DeepSpeech model
     if os.path.isdir(ARGS.model):
@@ -197,13 +201,11 @@ def main(ARGS):
                 vad_audio.write_wav(os.path.join(ARGS.savewav, datetime.now().strftime("savewav_%Y-%m-%d_%H-%M-%S_%f.wav")), wav_data)
                 wav_data = bytearray()
             text = stream_context.finishStream()
-            print("Recognized: %s" % text)
-
-            if len(text) > 1 and text != text_:
-                with open(translate_fpath, mode="w") as f:
-                    f.writelines(text)
+            if len(text) > 1:
+                tr_text = translator([text])
+                print("en: %s" % text)
+                printraw("ta: %s" % " ".join(tr_text))
             stream_context = model.createStream()
-            text_ = text
 
 if __name__ == '__main__':
     DEFAULT_SAMPLE_RATE = 16000
