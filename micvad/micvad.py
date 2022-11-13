@@ -1,3 +1,6 @@
+"""Voice Activity Detection with microphone."""
+
+import sys
 import time, logging
 from datetime import datetime
 import threading, collections, queue, os, os.path
@@ -9,6 +12,9 @@ import webrtcvad
 from halo import Halo
 from scipy import signal
 from . import translator as tr
+
+import warnings
+warnings.filterwarnings('ignore')
 
 logging.basicConfig(level=20)
 
@@ -152,14 +158,18 @@ class VADAudio(Audio):
                     yield None
                     ring_buffer.clear()
 
+
 def printraw(*text):
     rawout = open(1, 'w', encoding='utf8', closefd=False)
     print(*text, file=rawout)
     rawout.flush(); rawout.close()
 
-def main(ARGS):
 
+def main(ARGS):
+    sys.stdout = open(sys.stdout.fileno(), mode='w',
+                      encoding='utf8', buffering=1)
     translator = tr.load_translator('ta', 'en')
+    record_transcribe = ARGS.record_transcribe
 
     # Load DeepSpeech model
     if os.path.isdir(ARGS.model):
@@ -167,11 +177,11 @@ def main(ARGS):
         ARGS.model = os.path.join(model_dir, 'output_graph.pb')
         ARGS.scorer = os.path.join(model_dir, ARGS.scorer)
 
-    print('Initializing model...')
-    logging.info("ARGS.model: %s", ARGS.model)
+    # print('Initializing model...')
+    # logging.info("ARGS.model: %s", ARGS.model)
     model = deepspeech.Model(ARGS.model)
     if ARGS.scorer:
-        logging.info("ARGS.scorer: %s", ARGS.scorer)
+        # logging.info("ARGS.scorer: %s", ARGS.scorer)
         model.enableExternalScorer(ARGS.scorer)
 
     # Start audio with VAD
@@ -179,7 +189,8 @@ def main(ARGS):
                          device=ARGS.device,
                          input_rate=ARGS.rate,
                          file=ARGS.file)
-    print("Listening (ctrl-C to exit)...")
+    # print("Listening (ctrl-C to exit)...")
+    print("> ...")
     frames = vad_audio.vad_collector()
 
     # Stream from microphone to DeepSpeech using VAD
@@ -191,28 +202,32 @@ def main(ARGS):
     for frame in frames:
         if frame is not None:
             if spinner: spinner.start()
-            logging.debug("streaming frame")
+            # logging.debug("streaming frame")
             stream_context.feedAudioContent(np.frombuffer(frame, np.int16))
             if ARGS.savewav: wav_data.extend(frame)
         else:
             if spinner: spinner.stop()
-            logging.debug("end utterence")
+            # logging.debug("end utterence")
             if ARGS.savewav:
                 vad_audio.write_wav(os.path.join(ARGS.savewav, datetime.now().strftime("savewav_%Y-%m-%d_%H-%M-%S_%f.wav")), wav_data)
                 wav_data = bytearray()
             text = stream_context.finishStream()
-            if len(text) > 1:
-                tr_text = translator([text])
-                print("en: %s" % text)
-                printraw("ta: %s" % " ".join(tr_text))
+            if len(text) > 3:
+                if record_transcribe:
+                    print(">", text)
+                print(">", " ".join(translator([text])),
+                      sep=" ", flush=True)
+
             stream_context = model.createStream()
 
 if __name__ == '__main__':
-    DEFAULT_SAMPLE_RATE = 16000
+    DEFAULT_SAMPLE_RATE = 44100
 
     import argparse
     parser = argparse.ArgumentParser(description="Stream from microphone to DeepSpeech using VAD")
 
+    parser.add_argument('-t', '--record_transcribe', type=int, default=0,
+                        help='1 to include English transcription, 0 for just Tamil.')
     parser.add_argument('-v', '--vad_aggressiveness', type=int, default=3,
                         help="Set aggressiveness of VAD: an integer between 0 and 3, 0 being the least aggressive about filtering out non-speech, 3 the most aggressive. Default: 3")
     parser.add_argument('--nospinner', action='store_true',

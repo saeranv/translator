@@ -21,6 +21,8 @@ Follow instructions for Ubuntu, but also downgrade protobuf (as of 2022-11-12) w
 python -m translate.app SRT_KEYWORD
 
 
-### TODO
-- sync batch_size with mbart
-- convert .sh to python, ie: python -m translate.create_service_account $SA_NAME
+### FOR USE WITH CUDA
+OS: Windows 10 Pro, 64-bit
+DirectX runtime version: 12.0
+NVIDIA GeForce RTX 2080
+- driver version: 512.78
