@@ -1,18 +1,21 @@
 """Multi-lingual translation model for subtitle translation."""
 
-import os, sys
+import os
+import sys
 from functools import reduce
-from typing import Callable, Sequence
-from string import whitespace
 from pprint import pprint as pp
+from string import whitespace
+from typing import Callable, Sequence
 
 import numpy as np
+
 from .translator import load_translator
 
 DATA_DIR = os.path.join(os.getcwd(), "srt_data")
 TARGET_LANG = 'ta'
 SOURCE_LANG = 'en'
-ENCODING = 'utf-16-le'  # for .srt file
+ENCODING_WRITE = 'utf-16-le'  # for .srt file
+ENCODING_PRINT = 'utf-8'
 
 
 def get_srt_fname(srt_keyword:str) -> str:
@@ -23,9 +26,10 @@ def get_srt_fname(srt_keyword:str) -> str:
 
         assert len(srt_fnames) == 1, \
             (f"Trouble finding .srt files with keyword "
-            f" '{srt_keyword}' in {os.path.split(DATA_DIR)[1]} directory. Available files are:\n\n"
-            "- " + reduce(lambda a, b: f"{a}\n- {b}", _srt_fnames) + "\n\n"
-            "Check if your keyword is unique and correct!\n")
+             f" '{srt_keyword}' in {os.path.split(DATA_DIR)[1]} "
+             f"directory. Available files are:\n\n"
+             f"- " + reduce(lambda a, b: f"{a}\n- {b}", _srt_fnames) +
+             f"\n\nCheck if your keyword is unique and correct!\n")
 
         return srt_fnames[0]
 
@@ -110,6 +114,12 @@ def translate_text(translator: Callable, text_arr: Sequence) -> Sequence:
     return text_arr
 
 
+# def printraw(*text):
+#     rawout = open(1, 'w', encoding=ENCODING_PRINT, closefd=False)
+#     print(*text, file=rawout)
+#     rawout.flush(); rawout.close()
+
+
 if __name__ == "__main__":
 
     assert len(sys.argv) == 2, \
@@ -123,8 +133,10 @@ if __name__ == "__main__":
     print(f"Found {srt_fname} with keyword {srt_keyword}. Translating...")
 
     # Construct file paths
+    srt_fname_ta = srt_fname.replace(".srt", "_tamil.srt")
     srt_fpath_en = os.path.join(DATA_DIR, srt_fname)
-    srt_fpath_ta = os.path.join(DATA_DIR, srt_fname.replace(".srt", "_tamil.srt"))
+    srt_fpath_ta = os.path.join(
+            DATA_DIR, srt_fname_ta)
     assert os.path.exists(srt_fpath_en)
 
     # Open file
@@ -137,9 +149,10 @@ if __name__ == "__main__":
     translator = load_translator(TARGET_LANG, SOURCE_LANG)
 
     # Translate
-    for i in range(0, N, 1024):
+    chunk_size = 64
+    for i in range(0, N, chunk_size):
         # Chunk indexes to 1024 len
-        i0, i1 = i, i+1024
+        i0, i1 = i, i+chunk_size
         i1 = N if i1 >= N else i1
         # Extract strings
         _subs_en = np.array(subs_en[i0:i1], dtype=str)
@@ -153,10 +166,10 @@ if __name__ == "__main__":
     #     print(f"en: {subs_en[i]}ta: {subs_ta[i]}")
 
     # Write file
-    with open(srt_fpath_ta, mode='w', encoding=ENCODING) as f:
+    with open(srt_fpath_ta, mode='w', encoding=ENCODING_PRINT) as f:
         f.writelines(subs_ta)
         #if 3990 <= i <= 4000: print(i, ln)
 
     print(f"Translated {len(subs_ta)} lines.")
-    print(f"sed -n 100,110p srt_data/{srt_fname} >> cat 100-110 lines.")
+    print(f"sed -n 100,110p srt_data/{srt_fname_ta} >> cat 100-110 lines.")
 

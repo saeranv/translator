@@ -2,7 +2,7 @@
 
 Subtitle (.srt) translation from English to Tamil using mbart50_m2m.
 
-## INSTALLATION-UBUNTU
+### INSTALLATION-UBUNTU
 
 To install EasyNMT:
 `$ pip install -U easynmt`
@@ -11,18 +11,22 @@ Then this, if former doesn't work:
 `$ pip install --no-deps easynmt`
 `$ pip install tqdm transformers numpy nltk sentencepiece`
 
-# INSTALLATION-WINDOWS
+### INSTALLATION-WINDOWS
 
 Follow instructions for Ubuntu, but also downgrade protobuf (as of 2022-11-12) with:
 `$ pip install --upgrade "protobuf<=3.20.1"`
 
-## TRANSLATE
+### TRANSLATE
 
 python -m translate.app SRT_KEYWORD
 
+### VAD 
+python -m micvad.audio  # to get connected audio device data
+. mic.sh {VAD=3} {DEVICE-ID=1} {SAMPLE-RATE=44100} {ENGLISH-RECORD=1}
 
-### FOR USE WITH CUDA
+### DEEPSPEECH-GPU
+(requires cuda 10.1)
 OS: Windows 10 Pro, 64-bit
-DirectX runtime version: 12.0
 NVIDIA GeForce RTX 2080
 - driver version: 512.78
+- supports CUDA 11.6

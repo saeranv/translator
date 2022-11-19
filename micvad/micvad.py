@@ -11,12 +11,13 @@ import wave
 import webrtcvad
 from halo import Halo
 from scipy import signal
-from . import translator as tr
+from translate import translator as tr
 
 import warnings
 warnings.filterwarnings('ignore')
 
 logging.basicConfig(level=20)
+
 
 class Audio(object):
     """Streams raw audio from microphone. Data is received in a separate thread, and stored in a buffer, to be read from."""
