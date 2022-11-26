@@ -16,11 +16,13 @@ TARGET_LANG = 'ta'
 SOURCE_LANG = 'en'
 ENCODING_WRITE = 'utf-16-le'  # for .srt file
 ENCODING_PRINT = 'utf-8'
+DEFAULT_CHUNK_SIZE = 64
+DEFAULT_INCL_EN = False
 
 
-def get_srt_fname(srt_keyword:str) -> str:
+def get_srt_fname(srt_keyword: str) -> str:
     """Get .srt file."""
-    find_srt = lambda f: (f.endswith(".srt") and srt_keyword in f)
+    def find_srt(f): return (f.endswith(".srt") and srt_keyword in f)
     _srt_fnames = os.listdir(DATA_DIR)
     srt_fnames = [f for f in _srt_fnames
                   if find_srt(f) and '_tamil' not in f]
@@ -35,17 +37,17 @@ def get_srt_fname(srt_keyword:str) -> str:
     return srt_fnames[0]
 
 
-def is_line_alpha(line:str) -> bool:
+def is_line_alpha(line: str) -> bool:
     """True if any char in line is alphabetic, else False."""
     return any(c.isalpha() for c in line)
 
 
-def is_line_numeric(line:str) -> bool:
+def is_line_numeric(line: str) -> bool:
     """True if any char in line is numeric, else False."""
     return any(c.isnumeric() for c in line)
 
 
-def is_line_timestamp(line:str) -> bool:
+def is_line_timestamp(line: str) -> bool:
     """True if line is a timestamp line, else False."""
     return '-->' in line
 
@@ -81,7 +83,7 @@ def fix_line_breaks(_subs_ta):
         subs_ta += [_subs_ta[i]]
         # if not timestamp line, continue
         if not is_line_timestamp(_subs_ta[i]):
-            continue # Not timestamp line
+            continue  # Not timestamp line
         # traverse backwards, add line break in case its missing
         for j in range(len(subs_ta))[::-1]:
             subs_ta[j] = subs_ta[j].replace('\n', '') + '\n'
@@ -92,24 +94,24 @@ def fix_line_breaks(_subs_ta):
 
 
 def translate_text(
-    translator: Callable,
-    text_arr: npt.NDArray) -> npt.NDArray:
+        translator: Callable,
+        text_arr: npt.NDArray) -> npt.NDArray:
     """Translate text.
 
     Args:
         text_arr: 1D array of tuples, with each tuple representing
-            one line of text via multiple characters:
-            ```
-            np.array(
-                ['00:00:27,945 --> 00:00:32,783\n',
-                 '[Naru, in Comanche] <i>Soobesükütsa tüa</i>\n',
-                 '<i>pia mupitsl ikÜ kimai</i>.\n',
-                 '\n',
-                 '00:00:34,326 --> 00:00:39,748\n',
-                 '[in English] <i>A long time ago, it is said,</i>\n',
-                 '<i>a monster came here.</i>\n',
-                 '\n'])
-            ```
+        one line of text via multiple characters:
+        ```
+        np.array(
+            ['00:00:27,945 --> 00:00:32,783\n',
+                '[Naru, in Comanche] <i>Soobesükütsa tüa</i>\n',
+                '<i>pia mupitsl ikÜ kimai</i>.\n',
+                '\n',
+                '00:00:34,326 --> 00:00:39,748\n',
+                '[in English] <i>A long time ago, it is said,</i>\n',
+                '<i>a monster came here.</i>\n',
+                '\n'])
+        ```
     """
     # Map True if alpha else False
     alpha_bool = np.array(
@@ -117,23 +119,28 @@ def translate_text(
          for i, line in enumerate(text_arr)],
         dtype=bool)
     text_arr[alpha_bool] = translator(list(text_arr[alpha_bool]))
-
-    # tr_text_arr, tr_bool_arr = [], []
-    # for i, line in enumerate(text_arr):
-    #     is_alpha = is_line_alpha(line)
-    #     tr_bool_arr += [is_alpha]
-    #     tr_text_arr += [line]
-    #     if is_alpha and incl_en:
-    #         tr_text_arr += [line]
-    #         tr_bool_arr += [False]
-
     return text_arr
 
-def concat_en(_subs_ta: npt.NDArray, _subs_en:npt.NDArray) -> npt.NDArray:
+
+def chunk_subs(subs_en: Sequence, chunk_size: int) -> Sequence:
+    """Chunk sub array to ensure fit language model requirements."""
+
+    N, subs_en_chunks = len(subs_en), []
+    for i in range(0, N, chunk_size):
+        # Chunk indexes to 1024 len
+        i0, i1 = i, i+chunk_size
+        i1 = N if i1 >= N else i1
+        # Extract strings
+        subs_en_chunks += [np.array(subs_en[i0:i1], dtype=str)]
+    return subs_en_chunks
+
+
+def concat_en(subs_ta: Sequence, subs_en: Sequence) -> npt.NDArray:
     """Concat english subtitles after timestamp."""
     # Traverse translated subs backwards
-    _idx = []
-    concat_subs = []
+    _subs_ta = np.array(subs_ta, dtype=str)
+    _subs_en = np.array(subs_en, dtype=str)
+    _idx, concat_subs = [], []
     for i in range(len(_subs_en))[::-1]:
         line = _subs_en[i]
         if is_line_alpha(line):
@@ -149,18 +156,59 @@ def concat_en(_subs_ta: npt.NDArray, _subs_en:npt.NDArray) -> npt.NDArray:
 
     return np.array(concat_subs[::-1], dtype=str)
 
+
+def main(
+        srt_fpath_en: str,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        incl_en: bool = DEFAULT_INCL_EN) -> str:
+    """Main function."""
+
+    # Construct file paths
+    srt_fname_en = os.path.basename(srt_fpath_en)
+    srt_fname_ta = srt_fname_en.replace(".srt", "_tamil.srt")
+    srt_fpath_ta = os.path.join(DATA_DIR, srt_fname_ta)
+
+    # Open file
+    assert os.path.exists(srt_fpath_en)
+    with open(srt_fpath_en, mode='r') as f:
+        subs_en = f.readlines()
+
+    # Load translator
+    translator = load_translator(TARGET_LANG, SOURCE_LANG)
+
+    # Translate
+    subs_en_chunks = chunk_subs(subs_en, chunk_size)
+    subs_ta_chunks = [translate_text(translator, _subs_en.copy())
+                      for _subs_en in subs_en_chunks]
+    subs_ta = list(reduce(lambda x, y: x + y, subs_ta_chunks))  # unchunk
+    if incl_en:
+        subs_ta = concat_en(subs_ta, subs_en)
+    subs_ta = fix_line_breaks(subs_ta)
+
+    # Write file
+    with open(srt_fpath_ta, mode='w', encoding=ENCODING_PRINT) as f:
+        f.writelines(subs_ta)
+        #if 3990 <= i <= 4000: print(i, ln)
+
+    print(f"Translated {len(subs_ta)} lines.")
+    print("".join(subs_ta[:min(15, len(subs_ta))]))
+
+    return srt_fpath_ta
+
+
 if __name__ == "__main__":
 
+    # Parse args
     import argparse
-
     parser = argparse.ArgumentParser()
     parser.add_argument('-k', '--keyword_srt', type=str, default='',
                         help='Keyword to search for .srt file.')
-    parser.add_argument('-c', '--chunk_size', type=int, default=64,
+    parser.add_argument('-c', '--chunk_size', type=int,
+                        default=DEFAULT_CHUNK_SIZE,
                         help='Number of words per translation.')
-    parser.add_argument('-e', '--english', type=int, default=0,
+    parser.add_argument('-e', '--english', type=int,
+                        default=int(DEFAULT_INCL_EN),
                         help='Include English subtitles as well.')
-
     args = parser.parse_args()
     srt_keyword = args.keyword_srt
     chunk_size = args.chunk_size
@@ -171,49 +219,7 @@ if __name__ == "__main__":
     print(f"Found {srt_fname} with keyword {srt_keyword}. "
           f"Translating with {chunk_size} chunk size...")
 
-    # Construct file paths
-    srt_fname_ta = srt_fname.replace(".srt", "_tamil.srt")
-    srt_fpath_en = os.path.join(DATA_DIR, srt_fname)
-    srt_fpath_ta = os.path.join(
-            DATA_DIR, srt_fname_ta)
-    assert os.path.exists(srt_fpath_en)
-
-    # Open file
-    with open(srt_fpath_en, mode='r') as f:
-        subs_en = f.readlines()
-
-    N, subs_ta = len(subs_en), []
-
-    # Load translator
-    translator = load_translator(TARGET_LANG, SOURCE_LANG)
-
     # Translate
-    chunk_size = chunk_size
-    for i in range(0, N, chunk_size):
-        # Chunk indexes to 1024 len
-        i0, i1 = i, i+chunk_size
-        i1 = N if i1 >= N else i1
-        # Extract strings
-        _subs_en = np.array(subs_en[i0:i1], dtype=str)
-        _subs_ta = translate_text(translator, _subs_en.copy())
-        subs_ta.extend(_subs_ta)
-
-    # Concat for multilingual subs
-    if incl_en:
-        subs_ta = concat_en(
-            np.array(subs_ta, dtype=str),
-            np.array(subs_en, dtype=str))
-    subs_ta = fix_line_breaks(subs_ta)
-
-    # # Check file
-    # for i in range(10):
-    #     print(f"en: {subs_en[i]}ta: {subs_ta[i]}")
-
-    # Write file
-    with open(srt_fpath_ta, mode='w', encoding=ENCODING_PRINT) as f:
-        f.writelines(subs_ta)
-        #if 3990 <= i <= 4000: print(i, ln)
-
-    print(f"Translated {len(subs_ta)} lines.")
-    print(f"sed -n 100,110p srt_data/{srt_fname_ta} >> cat 100-110 lines.")
-
+    srt_fpath_ta = main(
+        os.path.join(DATA_DIR, srt_fname),
+        chunk_size, incl_en)
