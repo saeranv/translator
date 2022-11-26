@@ -1,8 +1,9 @@
-# SRT 
+# SRT
 *.srt
+!/srt_data/sample_en.srt
 
 # Model Files
-*.pbmm 
+*.pbmm
 *.scorer
 
 # Byte-compiled / optimized / DLL files
