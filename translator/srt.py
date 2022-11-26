@@ -4,12 +4,11 @@ import os
 import sys
 from functools import reduce
 from pprint import pprint as pp
-from string import whitespace
 from typing import Callable, Sequence
 import numpy as np
 from numpy import typing as npt
 
-from .translator import load_translator
+from . import translator as tr
 
 DATA_DIR = os.path.join(os.getcwd(), "srt_data")
 TARGET_LANG = 'ta'
@@ -159,27 +158,28 @@ def concat_en(subs_ta: Sequence, subs_en: Sequence) -> npt.NDArray:
 
 def main(
         srt_fpath_en: str,
+        translator: Callable,
         chunk_size: int = DEFAULT_CHUNK_SIZE,
-        incl_en: bool = DEFAULT_INCL_EN) -> str:
+        incl_en: bool = DEFAULT_INCL_EN,
+        ) -> str:
     """Main function."""
 
-    # Construct file paths
+    # Parse file paths
     srt_fname_en = os.path.basename(srt_fpath_en)
     srt_fname_ta = srt_fname_en.replace(".srt", "_tamil.srt")
     srt_fpath_ta = os.path.join(DATA_DIR, srt_fname_ta)
-
-    # Open file
     assert os.path.exists(srt_fpath_en)
     with open(srt_fpath_en, mode='r') as f:
         subs_en = f.readlines()
 
-    # Load translator
-    translator = load_translator(TARGET_LANG, SOURCE_LANG)
-
     # Translate
     subs_en_chunks = chunk_subs(subs_en, chunk_size)
+
+    #try:
     subs_ta_chunks = [translate_text(translator, _subs_en.copy())
                       for _subs_en in subs_en_chunks]
+    #except torch.cuda.OutOfMemoryError:
+
     subs_ta = list(reduce(lambda x, y: x + y, subs_ta_chunks))  # unchunk
     if incl_en:
         subs_ta = concat_en(subs_ta, subs_en)
@@ -201,18 +201,24 @@ if __name__ == "__main__":
     # Parse args
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('-k', '--keyword_srt', type=str, default='',
+    parser.add_argument('-k', '--keyword_srt', type=str,
                         help='Keyword to search for .srt file.')
     parser.add_argument('-c', '--chunk_size', type=int,
                         default=DEFAULT_CHUNK_SIZE,
                         help='Number of words per translation.')
-    parser.add_argument('-e', '--english', type=int,
+    parser.add_argument('-o', '--original_included', type=int,
                         default=int(DEFAULT_INCL_EN),
-                        help='Include English subtitles as well.')
+                        help='Include original subtitles above '
+                             'translated subtitles.')
+
     args = parser.parse_args()
     srt_keyword = args.keyword_srt
     chunk_size = args.chunk_size
-    incl_en = bool(args.english)
+    incl_en = bool(args.original_included)
+
+    if srt_keyword is None:
+        parser.print_help(sys.stderr)
+        sys.exit()
 
     # Find the file with keyword
     srt_fname = get_srt_fname(srt_keyword)
@@ -220,6 +226,8 @@ if __name__ == "__main__":
           f"Translating with {chunk_size} chunk size...")
 
     # Translate
+    # Load translator
+    translator = tr.load_translator(TARGET_LANG, SOURCE_LANG)
     srt_fpath_ta = main(
         os.path.join(DATA_DIR, srt_fname),
-        chunk_size, incl_en)
+        translator, chunk_size, incl_en)

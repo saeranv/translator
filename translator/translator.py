@@ -6,6 +6,8 @@ from typing import Callable, Sequence
 from easynmt import EasyNMT
 from pprint import pprint as pp
 
+
+
 ENCODING = 'utf8'  # For tamil chars in windows OS
 CHUNK_SIZE = 1024
 
