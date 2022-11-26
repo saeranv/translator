@@ -6,8 +6,8 @@ from functools import reduce
 from pprint import pprint as pp
 from string import whitespace
 from typing import Callable, Sequence
-
 import numpy as np
+from numpy import typing as npt
 
 from .translator import load_translator
 
@@ -45,6 +45,11 @@ def is_line_numeric(line:str) -> bool:
     return any(c.isnumeric() for c in line)
 
 
+def is_line_timestamp(line:str) -> bool:
+    """True if line is a timestamp line, else False."""
+    return '-->' in line
+
+
 def fix_line_breaks(_subs_ta):
     """Hacky fix to line break bug.
 
@@ -75,7 +80,7 @@ def fix_line_breaks(_subs_ta):
     for i in range(len(_subs_ta)):
         subs_ta += [_subs_ta[i]]
         # if not timestamp line, continue
-        if not('-->' in _subs_ta[i]):
+        if not is_line_timestamp(_subs_ta[i]):
             continue # Not timestamp line
         # traverse backwards, add line break in case its missing
         for j in range(len(subs_ta))[::-1]:
@@ -88,8 +93,7 @@ def fix_line_breaks(_subs_ta):
 
 def translate_text(
     translator: Callable,
-    text_arr: Sequence,
-    incl_en: bool) -> Sequence:
+    text_arr: npt.NDArray) -> npt.NDArray:
     """Translate text.
 
     Args:
@@ -107,34 +111,43 @@ def translate_text(
                  '\n'])
             ```
     """
-    # # Map True if alpha else False
-    # alpha_bool = np.array(
-    #     [is_line_alpha(line)
-    #      for i, line in enumerate(text_arr)],
-    #     dtype=bool)
-    # text_arr[alpha_bool] = translator(list(text_arr[alpha_bool]))
+    # Map True if alpha else False
+    alpha_bool = np.array(
+        [is_line_alpha(line)
+         for i, line in enumerate(text_arr)],
+        dtype=bool)
+    text_arr[alpha_bool] = translator(list(text_arr[alpha_bool]))
 
-    tr_text_arr, tr_bool_arr = [], []
-    for i, line in enumerate(text_arr):
-        is_alpha = is_line_alpha(line)
-        tr_bool_arr += [is_alpha]
-        tr_text_arr += [line]
-        if is_alpha and incl_en:
-            tr_text_arr += [line]
-            tr_bool_arr += [False]
+    # tr_text_arr, tr_bool_arr = [], []
+    # for i, line in enumerate(text_arr):
+    #     is_alpha = is_line_alpha(line)
+    #     tr_bool_arr += [is_alpha]
+    #     tr_text_arr += [line]
+    #     if is_alpha and incl_en:
+    #         tr_text_arr += [line]
+    #         tr_bool_arr += [False]
 
-    # Translate only alpha lines
-    tr_text_arr = np.array(tr_text_arr, dtype=str)
-    tr_text_arr[tr_bool_arr] = \
-        translator(list(tr_text_arr[tr_bool_arr]))
-    return list(tr_text_arr)
+    return text_arr
 
+def concat_en(_subs_ta: npt.NDArray, _subs_en:npt.NDArray) -> npt.NDArray:
+    """Concat english subtitles after timestamp."""
+    # Traverse translated subs backwards
+    _idx = []
+    concat_subs = []
+    for i in range(len(_subs_en))[::-1]:
+        line = _subs_en[i]
+        if is_line_alpha(line):
+            _idx += [i]
+        elif is_line_timestamp(line):
+            # Once we hit timestamp concat prior lines
+            concat_subs += list(_subs_ta[_idx])
+            concat_subs += list(_subs_en[_idx])
+            concat_subs += [line]
+            _idx = []
+        else:
+            concat_subs += [line]
 
-# def printraw(*text):
-#     rawout = open(1, 'w', encoding=ENCODING_PRINT, closefd=False)
-#     print(*text, file=rawout)
-#     rawout.flush(); rawout.close()
-
+    return np.array(concat_subs[::-1], dtype=str)
 
 if __name__ == "__main__":
 
@@ -182,9 +195,14 @@ if __name__ == "__main__":
         i1 = N if i1 >= N else i1
         # Extract strings
         _subs_en = np.array(subs_en[i0:i1], dtype=str)
-        _subs_ta = translate_text(translator, _subs_en, incl_en)
+        _subs_ta = translate_text(translator, _subs_en.copy())
         subs_ta.extend(_subs_ta)
 
+    # Concat for multilingual subs
+    if incl_en:
+        subs_ta = concat_en(
+            np.array(subs_ta, dtype=str),
+            np.array(subs_en, dtype=str))
     subs_ta = fix_line_breaks(subs_ta)
 
     # # Check file
