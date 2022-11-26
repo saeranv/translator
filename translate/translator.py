@@ -7,6 +7,7 @@ from easynmt import EasyNMT
 from pprint import pprint as pp
 
 ENCODING = 'utf8'  # For tamil chars in windows OS
+CHUNK_SIZE = 1024
 
 def load_translator(target_lang:str, source_lang:str) -> Callable:
     """Load translation model function."""
@@ -29,7 +30,7 @@ def load_translator(target_lang:str, source_lang:str) -> Callable:
             target_lang=target_lang,
             source_lang=source_lang,
             show_progress_bar=False,
-            batch_size=1024,
+            batch_size=CHUNK_SIZE,
             document_language_detection=False,
             max_new_tokens=50
             )
@@ -45,7 +46,6 @@ def printraw(*text):
 
 
 if __name__ == '__main__':
-
     target_lang, source_lang = 'ta', 'en'
     translator = load_translator(target_lang, source_lang)
     tr_text = translator(["Testing translator, working!"])

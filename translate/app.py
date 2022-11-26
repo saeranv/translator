@@ -19,19 +19,20 @@ ENCODING_PRINT = 'utf-8'
 
 
 def get_srt_fname(srt_keyword:str) -> str:
-        """Get .srt file."""
-        find_srt = lambda f: (f.endswith(".srt") and srt_keyword in f)
-        _srt_fnames = os.listdir(DATA_DIR)
-        srt_fnames = [f for f in _srt_fnames if find_srt(f)]
+    """Get .srt file."""
+    find_srt = lambda f: (f.endswith(".srt") and srt_keyword in f)
+    _srt_fnames = os.listdir(DATA_DIR)
+    srt_fnames = [f for f in _srt_fnames
+                  if find_srt(f) and '_tamil' not in f]
 
-        assert len(srt_fnames) == 1, \
-            (f"Trouble finding .srt files with keyword "
-             f" '{srt_keyword}' in {os.path.split(DATA_DIR)[1]} "
-             f"directory. Available files are:\n\n"
-             f"- " + reduce(lambda a, b: f"{a}\n- {b}", _srt_fnames) +
-             f"\n\nCheck if your keyword is unique and correct!\n")
+    assert len(srt_fnames) == 1, \
+        (f"Trouble finding .srt files with keyword "
+            f" '{srt_keyword}' in {os.path.split(DATA_DIR)[1]} "
+            f"directory. Available files are:\n\n"
+            f"- " + reduce(lambda a, b: f"{a}\n- {b}", _srt_fnames) +
+            f"\n\nCheck if your keyword is unique and correct!\n")
 
-        return srt_fnames[0]
+    return srt_fnames[0]
 
 
 def is_line_alpha(line:str) -> bool:
@@ -85,7 +86,10 @@ def fix_line_breaks(_subs_ta):
     return subs_ta
 
 
-def translate_text(translator: Callable, text_arr: Sequence) -> Sequence:
+def translate_text(
+    translator: Callable,
+    text_arr: Sequence,
+    incl_en: bool) -> Sequence:
     """Translate text.
 
     Args:
@@ -103,15 +107,27 @@ def translate_text(translator: Callable, text_arr: Sequence) -> Sequence:
                  '\n'])
             ```
     """
-    # Map True if alpha else False
-    alpha_bool = np.array(
-        [is_line_alpha(line)
-         for i, line in enumerate(text_arr)],
-        dtype=bool)
+    # # Map True if alpha else False
+    # alpha_bool = np.array(
+    #     [is_line_alpha(line)
+    #      for i, line in enumerate(text_arr)],
+    #     dtype=bool)
+    # text_arr[alpha_bool] = translator(list(text_arr[alpha_bool]))
 
-    text_arr[alpha_bool] = translator(list(text_arr[alpha_bool]))
+    tr_text_arr, tr_bool_arr = [], []
+    for i, line in enumerate(text_arr):
+        is_alpha = is_line_alpha(line)
+        tr_bool_arr += [is_alpha]
+        tr_text_arr += [line]
+        if is_alpha and incl_en:
+            tr_text_arr += [line]
+            tr_bool_arr += [False]
 
-    return text_arr
+    # Translate only alpha lines
+    tr_text_arr = np.array(tr_text_arr, dtype=str)
+    tr_text_arr[tr_bool_arr] = \
+        translator(list(tr_text_arr[tr_bool_arr]))
+    return list(tr_text_arr)
 
 
 # def printraw(*text):
@@ -122,15 +138,25 @@ def translate_text(translator: Callable, text_arr: Sequence) -> Sequence:
 
 if __name__ == "__main__":
 
-    assert len(sys.argv) == 2, \
-        (f"Invalid argument(s). Usage: python translate_srt.app SRT_KEYWORD\n"
-         f"Got {sys.argv[1:]} in args.")
+    import argparse
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-k', '--keyword_srt', type=str, default='',
+                        help='Keyword to search for .srt file.')
+    parser.add_argument('-c', '--chunk_size', type=int, default=64,
+                        help='Number of words per translation.')
+    parser.add_argument('-e', '--english', type=int, default=0,
+                        help='Include English subtitles as well.')
+
+    args = parser.parse_args()
+    srt_keyword = args.keyword_srt
+    chunk_size = args.chunk_size
+    incl_en = bool(args.english)
 
     # Find the file with keyword
-    srt_keyword = sys.argv[1]
     srt_fname = get_srt_fname(srt_keyword)
-    print(f"Found {srt_fname} with keyword {srt_keyword}. Translating...")
+    print(f"Found {srt_fname} with keyword {srt_keyword}. "
+          f"Translating with {chunk_size} chunk size...")
 
     # Construct file paths
     srt_fname_ta = srt_fname.replace(".srt", "_tamil.srt")
@@ -149,14 +175,14 @@ if __name__ == "__main__":
     translator = load_translator(TARGET_LANG, SOURCE_LANG)
 
     # Translate
-    chunk_size = 64
+    chunk_size = chunk_size
     for i in range(0, N, chunk_size):
         # Chunk indexes to 1024 len
         i0, i1 = i, i+chunk_size
         i1 = N if i1 >= N else i1
         # Extract strings
         _subs_en = np.array(subs_en[i0:i1], dtype=str)
-        _subs_ta = translate_text(translator, _subs_en)
+        _subs_ta = translate_text(translator, _subs_en, incl_en)
         subs_ta.extend(_subs_ta)
 
     subs_ta = fix_line_breaks(subs_ta)
