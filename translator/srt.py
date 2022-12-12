@@ -9,6 +9,10 @@ import numpy as np
 from numpy import typing as npt
 
 from . import translator as tr
+from . import util
+is_line_alpha, is_line_numeric = \
+    util.is_line_alpha, util.is_line_numeric
+
 
 DATA_DIR = os.path.join(os.getcwd(), "srt_data")
 TARGET_LANG = 'ta'
@@ -34,16 +38,6 @@ def get_srt_fname(srt_keyword: str) -> str:
             f"\n\nCheck if your keyword is unique and correct!\n")
 
     return srt_fnames[0]
-
-
-def is_line_alpha(line: str) -> bool:
-    """True if any char in line is alphabetic, else False."""
-    return any(c.isalpha() for c in line)
-
-
-def is_line_numeric(line: str) -> bool:
-    """True if any char in line is numeric, else False."""
-    return any(c.isnumeric() for c in line)
 
 
 def is_line_timestamp(line: str) -> bool:
@@ -157,48 +151,33 @@ def concat_en(subs_ta: Sequence, subs_en: Sequence) -> npt.NDArray:
 
 
 def main(
-        srt_fpath_en: str,
+        subs_en: Sequence,
         translator: Callable,
         chunk_size: int = DEFAULT_CHUNK_SIZE,
-        incl_en: bool = DEFAULT_INCL_EN,
+        incl_en: bool = DEFAULT_INCL_EN
         ) -> str:
     """Main function."""
 
-    # Parse file paths
-    srt_fname_en = os.path.basename(srt_fpath_en)
-    srt_fname_ta = srt_fname_en.replace(".srt", "_tamil.srt")
-    srt_fpath_ta = os.path.join(DATA_DIR, srt_fname_ta)
-    assert os.path.exists(srt_fpath_en)
-    with open(srt_fpath_en, mode='r') as f:
-        subs_en = f.readlines()
-
     # Translate
     subs_en_chunks = chunk_subs(subs_en, chunk_size)
-
-    #try:
     subs_ta_chunks = [translate_text(translator, _subs_en.copy())
                       for _subs_en in subs_en_chunks]
-    #except torch.cuda.OutOfMemoryError:
 
-    subs_ta = list(reduce(lambda x, y: x + y, subs_ta_chunks))  # unchunk
+
+    subs_ta = list(reduce(lambda x, y: list(x) + list(y),
+                          subs_ta_chunks))  # unchunk
     if incl_en:
         subs_ta = concat_en(subs_ta, subs_en)
     subs_ta = fix_line_breaks(subs_ta)
 
-    # Write file
-    with open(srt_fpath_ta, mode='w', encoding=ENCODING_PRINT) as f:
-        f.writelines(subs_ta)
-        #if 3990 <= i <= 4000: print(i, ln)
-
-    print(f"Translated {len(subs_ta)} lines.")
-    print("".join(subs_ta[:min(15, len(subs_ta))]))
-
-    return srt_fpath_ta
+    return subs_ta
 
 
 if __name__ == "__main__":
 
     # Parse args
+    def parser_quit():
+        parser.print_help(); sys.exit()
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('-k', '--keyword_srt', type=str,
@@ -208,26 +187,52 @@ if __name__ == "__main__":
                         help='Number of words per translation.')
     parser.add_argument('-o', '--original_included', type=int,
                         default=int(DEFAULT_INCL_EN),
-                        help='Include original subtitles above '
-                             'translated subtitles.')
+                        help=('Include original subtitles above '
+                             'translated subtitles.'))
+    parser.add_argument('--file', action='store_true',
+                        help=('Optional, write translation to auto-named file. '
+                              'By default translation streams to stdout.'))
+    parser.add_argument('-p', '--pickle', type=int,
+                        default=0, help=f'Use pickle. Default {0}.')
 
     args = parser.parse_args()
     srt_keyword = args.keyword_srt
     chunk_size = args.chunk_size
     incl_en = bool(args.original_included)
+    write_file = args.file
+    use_pickle = bool(args.pickle)
 
-    if srt_keyword is None:
-        parser.print_help(sys.stderr)
-        sys.exit()
+    # Check inputs and quit if not correct
+    if len(sys.argv) == 1 or srt_keyword is None:
+        parser_quit()
 
     # Find the file with keyword
-    srt_fname = get_srt_fname(srt_keyword)
-    print(f"Found {srt_fname} with keyword {srt_keyword}. "
-          f"Translating with {chunk_size} chunk size...")
+    srt_fname_en = get_srt_fname(srt_keyword)
+    if write_file:
+        print(f"Found {srt_fname_en} with keyword {srt_keyword}. "
+            f"Translating with {chunk_size} chunk size...")
+    srt_fpath_en = os.path.join(DATA_DIR, srt_fname_en)
+    assert os.path.exists(srt_fpath_en)
+    with open(srt_fpath_en, mode='r') as f:
+        subs_en = f.readlines()
 
     # Translate
     # Load translator
-    translator = tr.load_translator(TARGET_LANG, SOURCE_LANG)
-    srt_fpath_ta = main(
-        os.path.join(DATA_DIR, srt_fname),
-        translator, chunk_size, incl_en)
+    translator = tr.load_translator(
+        SOURCE_LANG, TARGET_LANG, batch_size=chunk_size, use_pickle=use_pickle)
+    subs_ta = main(
+        subs_en, translator, chunk_size, incl_en)
+
+    if not write_file:
+        print("".join(subs_ta))
+    else:
+        srt_fname_ta = srt_fname_en.replace(".srt", "_tamil.srt")
+        srt_fpath_ta = os.path.join(DATA_DIR, srt_fname_ta)
+
+        # Write file
+        with open(srt_fpath_ta, mode='w', encoding=ENCODING_PRINT) as f:
+            f.writelines(subs_ta)
+            #if 3990 <= i <= 4000: print(i, ln)
+
+        print(f"Translated {len(subs_ta)} lines, saved as {srt_fname_ta}.")
+        print("".join(subs_ta[:min(15, len(subs_ta))]))

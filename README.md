@@ -18,9 +18,10 @@ Follow instructions for Ubuntu, but also downgrade protobuf (as of 2022-11-12) w
 
 ### TRANSLATE
 
-python -m translate.app SRT_KEYWORD
+python -m translator.srt -k SRT_KEYWORD -i INCLUDE_EN -c CHUNK_SIZE
+python -m translator.translator "translate me"
 
-### VAD 
+### VAD 		
 python -m micvad.audio  # to get connected audio device data
 . mic.sh {VAD=3} {DEVICE-ID=1} {SAMPLE-RATE=44100} {ENGLISH-RECORD=1}
 
