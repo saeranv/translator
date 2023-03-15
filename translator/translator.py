@@ -110,9 +110,9 @@ if __name__ == '__main__':
     translate_num = bool(args.translate_num)
     batch_size = args.chunk_size
     use_pickle = bool(args.pickle)
-    text = args.text
+    text = input() if not sys.stdin.isatty() else args.text
 
-    if len(sys.argv) == 1 or text == "":
+    if text == "":
         parser_quit()
 
     if translate_num:
@@ -127,4 +127,3 @@ if __name__ == '__main__':
 
     text_ = " ".join(text_)
     print(text_, flush=True)
-
