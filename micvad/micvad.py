@@ -11,7 +11,7 @@ import wave
 import webrtcvad
 from halo import Halo
 from scipy import signal
-from translate import translator as tr
+from translator import translator as tr
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -169,7 +169,8 @@ def printraw(*text):
 def main(ARGS):
     sys.stdout = open(sys.stdout.fileno(), mode='w',
                       encoding='utf8', buffering=1)
-    translator = tr.load_translator('ta', 'en')
+    translator = tr.load_translator(
+        'ta', 'en', batch_size=tr.DEFAULT_BATCH_SIZE, use_pickle=False)
     record_transcribe = ARGS.record_transcribe
 
     # Load DeepSpeech model
