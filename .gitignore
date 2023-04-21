@@ -1,3 +1,8 @@
+# BINARY
+*.wav
+*.mp3
+*.mp4
+
 # SRT
 *.srt
 !/srt_data/sample_en.srt

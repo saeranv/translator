@@ -1,0 +1,5 @@
+Transcribing ./jfk.wav to ./.txt
+
+[00:00:00.000 --> 00:00:07.600]   And so my fellow Americans ask not what your country can do for you,
+[00:00:07.600 --> 00:00:10.600]   ask what you can do for your country.
+
